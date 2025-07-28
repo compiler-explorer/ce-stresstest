@@ -1,0 +1,37 @@
+# Scaling Test Configuration
+# Tests performance across different worker instance counts
+
+test_name: "worker_scaling_analysis"
+endpoint: "https://beta.compiler-explorer.com"
+compiler: "g122"
+
+# Scaling test parameters
+instance_counts: [2, 4, 6, 8, 10]
+rps_per_instance: 5.0
+duration_per_test_seconds: 180
+
+# Test execution settings
+max_concurrent_requests: 100  # Higher for scaling tests
+request_timeout_seconds: 45   # Longer timeout for high load
+rate_limit_rps: 50.0          # Higher rate limit
+
+# Scenarios to focus on for scaling (leave empty for all)
+scenarios: ["simple", "cpu_intensive", "memory_heavy"]
+
+# Results and reporting
+results_dir: "results/scaling"
+enable_live_dashboard: true
+save_raw_data: true
+generate_report: true
+
+# Scaling-specific analysis
+scaling_analysis:
+  efficiency_threshold: 0.8    # 80% scaling efficiency target
+  max_latency_increase: 2.0    # Max 2x latency increase acceptable
+  baseline_instance_count: 2   # Reference point for comparison
+
+# Alert thresholds
+alerts:
+  max_response_time_ms: 8000   # Higher threshold for scaling tests
+  min_success_rate: 0.90       # Slightly relaxed for high load
+  max_baseline_violations: 20

@@ -1,0 +1,47 @@
+# Baseline Stress Test Configuration
+# This configuration runs a comprehensive baseline test across all scenario types
+
+test_name: "baseline_comprehensive_test"
+endpoint: "https://beta.compiler-explorer.com"
+compiler: "g122"
+
+# Test execution settings
+max_concurrent_requests: 50
+request_timeout_seconds: 30
+rate_limit_rps: 10.0
+
+# Scenarios to include (leave empty to use all available)
+scenarios: []
+
+# Test patterns to execute
+test_patterns:
+  - type: "steady"
+    name: "steady_baseline"
+    rps: 5.0
+    duration_seconds: 300
+    
+  - type: "burst"
+    name: "burst_baseline"
+    baseline_rps: 3.0
+    burst_rps: 15.0
+    duration_seconds: 600
+    burst_duration_seconds: 30
+    burst_interval_seconds: 120
+    
+  - type: "ramp_up"
+    name: "ramp_up_baseline"
+    min_rps: 1.0
+    max_rps: 10.0
+    duration_seconds: 300
+
+# Results and reporting
+results_dir: "results"
+enable_live_dashboard: true
+save_raw_data: true
+generate_report: true
+
+# Alert thresholds
+alerts:
+  max_response_time_ms: 5000
+  min_success_rate: 0.95
+  max_baseline_violations: 10

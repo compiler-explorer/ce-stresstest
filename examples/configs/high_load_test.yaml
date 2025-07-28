@@ -1,0 +1,54 @@
+# High Load Stress Test Configuration
+# Designed to test system limits and failure modes
+
+test_name: "high_load_stress_test"
+endpoint: "https://beta.compiler-explorer.com"
+compiler: "g122"
+
+# High load settings
+max_concurrent_requests: 200
+request_timeout_seconds: 60
+rate_limit_rps: 100.0
+
+# Focus on quick scenarios for high throughput testing
+scenarios: ["simple", "error_syntax", "error_template"]
+
+# Test patterns designed for stress testing
+test_patterns:
+  - type: "sustained_high"
+    name: "sustained_peak_load"
+    rps: 50.0
+    duration_seconds: 300
+    
+  - type: "burst"
+    name: "extreme_burst"
+    baseline_rps: 10.0
+    burst_rps: 100.0
+    duration_seconds: 600
+    burst_duration_seconds: 60
+    burst_interval_seconds: 180
+    
+  - type: "wave"
+    name: "high_amplitude_wave"
+    base_rps: 30.0
+    amplitude_rps: 40.0
+    duration_seconds: 900
+    period_seconds: 200
+
+# Results and reporting
+results_dir: "results/high_load"
+enable_live_dashboard: true
+save_raw_data: true
+generate_report: true
+
+# Relaxed thresholds for stress testing
+alerts:
+  max_response_time_ms: 15000  # Much higher threshold
+  min_success_rate: 0.80       # Expect some failures under stress
+  max_baseline_violations: 100 # Higher tolerance
+
+# Failure analysis
+failure_analysis:
+  track_error_patterns: true
+  analyze_timeout_distribution: true
+  monitor_resource_exhaustion: true
