@@ -47,6 +47,8 @@ class MetricsSummary:
     p99_latency_ms: float
     min_latency_ms: float
     max_latency_ms: float
+    min_successful_latency_ms: Optional[float]
+    min_failed_latency_ms: Optional[float]
 
     # Throughput metrics
     requests_per_second: float
@@ -266,6 +268,8 @@ class MetricsCollector:
                 p99_latency_ms=0.0,
                 min_latency_ms=0.0,
                 max_latency_ms=0.0,
+                min_successful_latency_ms=None,
+                min_failed_latency_ms=None,
                 requests_per_second=0.0,
                 successful_rps=0.0,
                 error_breakdown={},
@@ -289,6 +293,13 @@ class MetricsCollector:
         median_latency = statistics.median(latencies)
         min_latency = min(latencies)
         max_latency = max(latencies)
+        
+        # Separate latencies by success/failure
+        successful_latencies = [r.total_time_ms for r in self.results if r.status == CompilationStatus.SUCCESS]
+        failed_latencies = [r.total_time_ms for r in self.results if r.status != CompilationStatus.SUCCESS]
+        
+        min_successful_latency = min(successful_latencies) if successful_latencies else None
+        min_failed_latency = min(failed_latencies) if failed_latencies else None
 
         # Percentiles
         if len(latencies) >= 100:
@@ -344,6 +355,8 @@ class MetricsCollector:
             p99_latency_ms=p99_latency,
             min_latency_ms=min_latency,
             max_latency_ms=max_latency,
+            min_successful_latency_ms=min_successful_latency,
+            min_failed_latency_ms=min_failed_latency,
             requests_per_second=requests_per_second,
             successful_rps=successful_rps,
             error_breakdown=dict(error_breakdown),

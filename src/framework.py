@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import time
 import logging
+import signal
 from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +23,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from .api_client import CompilerExplorerClient, CompilationResult
+from .api_client import CompilerExplorerClient, CompilationResult, InstanceStatus
 from .scenarios import WorkloadScenarios, ScenarioConfig
 from .load_patterns import LoadPattern, LoadPatternFactory, LoadEvent
 from .metrics import MetricsCollector, MetricsSummary, PerformanceAnalyzer
@@ -32,8 +33,8 @@ from .metrics import MetricsCollector, MetricsSummary, PerformanceAnalyzer
 class TestConfiguration:
     """Configuration for a stress test"""
 
-    endpoint: str = "https://beta.compiler-explorer.com"
-    compiler: str = "g122"
+    endpoint: str = "https://compiler-explorer.com"
+    compiler: str = "g151"
     max_concurrent_requests: int = 50
     request_timeout_seconds: int = 30
     rate_limit_rps: float = 10.0
@@ -55,6 +56,9 @@ class CompilerStressTest:
         )
         self.metrics_collector: Optional[MetricsCollector] = None
         self.client: Optional[CompilerExplorerClient] = None
+        self._shutdown_requested = False
+        self._current_test_name: Optional[str] = None
+        self._instance_status_at_start: List[InstanceStatus] = []
 
         # Setup logging
         logging.basicConfig(
@@ -62,11 +66,42 @@ class CompilerStressTest:
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         )
         self.logger = logging.getLogger(__name__)
+        
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
 
         # Ensure results directory exists
         Path(config.results_dir).mkdir(parents=True, exist_ok=True)
 
-    async def __aenter__(self) -> StressTestFramework:  # type: ignore
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum: int, frame: Any) -> None:
+            self._shutdown_requested = True
+            self.console.print(f"\n[bold red]Aborted![/bold red] Saving results...")
+            # Cancel any pending tasks gracefully
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self._graceful_shutdown())
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+    async def _graceful_shutdown(self) -> None:
+        """Handle graceful shutdown when interrupted"""
+        if self.metrics_collector and self._current_test_name:
+            # Stop metrics collection and generate summary
+            self.metrics_collector.stop_collection()
+            summary = self.metrics_collector.generate_summary()
+            
+            # Save partial results with interrupted suffix
+            interrupted_name = f"{self._current_test_name}_interrupted"
+            await self._save_test_results(interrupted_name, summary)
+            
+            # Display summary
+            self.console.print(f"\n[bold yellow]Partial Results for {interrupted_name}:[/bold yellow]")
+            self._display_test_summary(interrupted_name, summary)
+
+    async def __aenter__(self) -> CompilerStressTest:  # type: ignore
         self.client = CompilerExplorerClient(
             base_url=self.config.endpoint,
             max_requests_per_second=self.config.rate_limit_rps,
@@ -287,6 +322,7 @@ class CompilerStressTest:
         """Execute a load test with the given pattern"""
         scenarios = self._load_scenarios()
         self.metrics_collector = MetricsCollector(scenarios)
+        self._current_test_name = test_name
 
         self.console.print(f"\n[bold green]Starting test: {test_name}[/bold green]")
         self.console.print(f"Duration: {pattern.duration_seconds}s")
@@ -294,6 +330,19 @@ class CompilerStressTest:
         self.console.print(
             f"Max concurrent requests: {self.config.max_concurrent_requests}"
         )
+        
+        # Get and display instance status
+        try:
+            if self.client:
+                instance_status = await self.client.get_instance_status()
+                total_instances = sum(inst.healthy_targets for inst in instance_status if inst.status == "Online")
+                self.console.print(f"Active CE instances: {total_instances}")
+                
+                # Store instance status for results
+                self._instance_status_at_start = instance_status
+        except Exception as e:
+            self.console.print(f"[dim]Could not get instance status: {e}[/dim]")
+            self._instance_status_at_start = []
 
         self.metrics_collector.start_collection()
 
@@ -326,6 +375,11 @@ class CompilerStressTest:
                 # Generate and execute load
                 load_generator = pattern.generate_load_events()
                 async for load_event in load_generator:  # type: ignore
+                    # Check for shutdown request
+                    if self._shutdown_requested:
+                        self.console.print("\n[yellow]Stopping load generation due to shutdown request...[/yellow]")
+                        break
+                    
                     # Update progress
                     elapsed = time.time() - (pattern.start_time or time.time())
                     progress.update(
@@ -368,11 +422,19 @@ class CompilerStressTest:
         self.metrics_collector.stop_collection()
         summary = self.metrics_collector.generate_summary()
 
-        # Save results
-        await self._save_test_results(test_name, summary)
+        # Adjust test name if interrupted
+        final_test_name = f"{test_name}_interrupted" if self._shutdown_requested else test_name
 
-        # Display summary
-        self._display_test_summary(test_name, summary)
+        # Save results
+        await self._save_test_results(final_test_name, summary)
+
+        # Display summary with appropriate status
+        if self._shutdown_requested:
+            self.console.print(f"\n[bold yellow]Partial Results for {final_test_name}:[/bold yellow]")
+        else:
+            self.console.print(f"\n[bold green]Test Completed: {final_test_name}[/bold green]")
+        
+        self._display_test_summary(final_test_name, summary)
 
         return summary
 
@@ -467,6 +529,21 @@ class CompilerStressTest:
                 "max_concurrent_requests": self.config.max_concurrent_requests,
                 "rate_limit_rps": self.config.rate_limit_rps,
             },
+            "infrastructure": {
+                "instance_status_at_start": [
+                    {
+                        "environment": inst.environment_name,
+                        "healthy_targets": inst.healthy_targets,
+                        "total_targets": inst.total_targets,
+                        "status": inst.status
+                    }
+                    for inst in self._instance_status_at_start
+                ],
+                "total_active_instances": sum(
+                    inst.healthy_targets for inst in self._instance_status_at_start 
+                    if inst.status == "Online"
+                )
+            },
             "summary": {
                 "total_requests": summary.total_requests,
                 "successful_requests": summary.successful_requests,
@@ -476,6 +553,8 @@ class CompilerStressTest:
                 "median_latency_ms": summary.median_latency_ms,
                 "p95_latency_ms": summary.p95_latency_ms,
                 "p99_latency_ms": summary.p99_latency_ms,
+                "min_successful_latency_ms": summary.min_successful_latency_ms,
+                "min_failed_latency_ms": summary.min_failed_latency_ms,
                 "requests_per_second": summary.requests_per_second,
                 "test_duration_seconds": summary.test_duration_seconds,
                 "baseline_violations": summary.baseline_violations,
@@ -497,7 +576,6 @@ class CompilerStressTest:
 
     def _display_test_summary(self, test_name: str, summary: MetricsSummary) -> None:
         """Display test summary"""
-        self.console.print(f"\n[bold green]Test Completed: {test_name}[/bold green]")
 
         # Create summary table
         table = Table(show_header=True, header_style="bold magenta")
@@ -513,6 +591,12 @@ class CompilerStressTest:
         table.add_row("Median Latency", f"{summary.median_latency_ms:.1f}ms")
         table.add_row("P95 Latency", f"{summary.p95_latency_ms:.1f}ms")
         table.add_row("P99 Latency", f"{summary.p99_latency_ms:.1f}ms")
+        
+        # Add minimum latency metrics
+        if summary.min_successful_latency_ms is not None:
+            table.add_row("Min Success Latency", f"{summary.min_successful_latency_ms:.1f}ms")
+        if summary.min_failed_latency_ms is not None:
+            table.add_row("Min Failed Latency", f"{summary.min_failed_latency_ms:.1f}ms")
         table.add_row("", "")  # Separator
         table.add_row("Throughput", f"{summary.requests_per_second:.1f} RPS")
         table.add_row("Successful RPS", f"{summary.successful_rps:.1f} RPS")

@@ -12,6 +12,14 @@ import aiohttp
 from asyncio_throttle import Throttler
 
 
+@dataclass
+class InstanceStatus:
+    environment_name: str
+    healthy_targets: int
+    total_targets: int
+    status: str
+
+
 class CompilationStatus(Enum):
     SUCCESS = "success"
     COMPILE_ERROR = "compile_error"
@@ -218,6 +226,38 @@ class CompilerExplorerClient:
 
         # This should never be reached due to the loop logic, but needed for type safety
         raise RuntimeError("Exhausted all retry attempts without returning a result")
+
+    async def get_instance_status(self) -> List[InstanceStatus]:
+        """Get current instance status from Compiler Explorer API"""
+        url = f"{self.base_url}/api/status"
+        
+        try:
+            if self.session is None:
+                raise RuntimeError("Client session not initialized")
+            
+            async with self.session.get(url) as response:
+                if response.status == 200:
+                    status_data = await response.json()
+                    instances = []
+                    
+                    # Parse environments array
+                    environments = status_data.get("environments", [])
+                    for env in environments:
+                        if isinstance(env, dict) and "health" in env:
+                            health = env["health"]
+                            instances.append(InstanceStatus(
+                                environment_name=env.get("name", "unknown"),
+                                healthy_targets=health.get("healthy_targets", 0),
+                                total_targets=health.get("total_targets", 0),
+                                status=health.get("status", "unknown")
+                            ))
+                    
+                    return instances
+                else:
+                    raise RuntimeError(f"Status API returned {response.status}")
+                    
+        except Exception as e:
+            raise RuntimeError(f"Failed to get instance status: {str(e)}")
 
     def _parse_compilation_result(
         self, result_data: Dict[str, Any], total_time_ms: float, request_id: str

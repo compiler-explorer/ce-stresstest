@@ -39,10 +39,10 @@ def cli():
 @cli.command()
 @click.option(
     "--endpoint",
-    default="https://beta.compiler-explorer.com",
+    default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="g122", help="Compiler ID to use")
+@click.option("--compiler", default="g151", help="Compiler ID to use")
 @click.option("--rps", type=float, default=10.0, help="Requests per second")
 @click.option("--duration", type=int, default=300, help="Test duration in seconds")
 @click.option("--concurrent", type=int, default=50, help="Max concurrent requests")
@@ -83,10 +83,10 @@ def steady(
 @cli.command()
 @click.option(
     "--endpoint",
-    default="https://beta.compiler-explorer.com",
+    default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="g122", help="Compiler ID to use")
+@click.option("--compiler", default="g151", help="Compiler ID to use")
 @click.option("--baseline-rps", type=float, default=5.0, help="Baseline RPS")
 @click.option("--burst-rps", type=float, default=20.0, help="Burst RPS")
 @click.option(
@@ -149,10 +149,10 @@ def burst(
 @cli.command()
 @click.option(
     "--endpoint",
-    default="https://beta.compiler-explorer.com",
+    default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="g122", help="Compiler ID to use")
+@click.option("--compiler", default="g151", help="Compiler ID to use")
 @click.option("--min-rps", type=float, default=1.0, help="Minimum RPS")
 @click.option("--max-rps", type=float, default=20.0, help="Maximum RPS")
 @click.option("--duration", type=int, default=300, help="Test duration in seconds")
@@ -199,10 +199,10 @@ def ramp(
 @cli.command()
 @click.option(
     "--endpoint",
-    default="https://beta.compiler-explorer.com",
+    default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="g122", help="Compiler ID to use")
+@click.option("--compiler", default="g151", help="Compiler ID to use")
 @click.option("--base-rps", type=float, default=10.0, help="Base RPS")
 @click.option("--amplitude-rps", type=float, default=5.0, help="Wave amplitude RPS")
 @click.option("--duration", type=int, default=600, help="Test duration in seconds")
@@ -249,10 +249,10 @@ def wave(
 @cli.command()
 @click.option(
     "--endpoint",
-    default="https://beta.compiler-explorer.com",
+    default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="g122", help="Compiler ID to use")
+@click.option("--compiler", default="g151", help="Compiler ID to use")
 @click.option(
     "--instances", default="2,4,6,8,10", help="Comma-separated instance counts"
 )
@@ -519,6 +519,79 @@ async def _run_scaling_test(
         await tester.scaling_test(
             instance_counts, rps_per_instance, duration, test_name
         )
+
+
+@cli.command()
+@click.option(
+    "--endpoint",
+    default="https://compiler-explorer.com",
+    help="Compiler Explorer API endpoint",
+)
+@click.option("--compiler", default="g151", help="Compiler ID to use")
+@click.option("--scenario", default="minimal", help="Scenario to test")
+@click.option("--concurrent", type=int, default=50, help="Max concurrent requests")
+@click.option(
+    "--workload-dir", type=click.Path(exists=True), help="Custom workload directory"
+)
+@click.option("--results-dir", default="results", help="Results output directory")
+@click.option("--no-dashboard", is_flag=True, help="Disable live dashboard")
+@click.option("--test-name", help="Custom test name")
+def instance_match(
+    endpoint,
+    compiler,
+    scenario,
+    concurrent,
+    workload_dir,
+    results_dir,
+    no_dashboard,
+    test_name,
+):
+    """Run requests matching the number of active production instances"""
+    
+    config = TestConfiguration(
+        endpoint=endpoint,
+        compiler=compiler,
+        max_concurrent_requests=concurrent,
+        scenarios=[scenario],
+        workload_dir=workload_dir,
+        results_dir=results_dir,
+        enable_live_dashboard=not no_dashboard,
+    )
+
+    asyncio.run(_run_instance_match_test(config, scenario, test_name))
+
+
+async def _run_instance_match_test(
+    config: TestConfiguration,
+    scenario: str,
+    test_name: Optional[str] = None,
+):
+    """Run instance match test"""
+    async with CompilerStressTest(config) as tester:
+        # Get current instance count - only main production instances
+        if tester.client:
+            instance_status = await tester.client.get_instance_status()
+            
+            # Only count main production instances (exclude GPU, ARM64, Windows)
+            prod_instances = 0
+            for inst in instance_status:
+                if (inst.status == "Online" and 
+                    inst.environment_name in ["prod-blue", "prod-green"] and
+                    not any(x in inst.environment_name for x in ["gpu", "aarch64", "win"])):
+                    prod_instances += inst.healthy_targets
+            
+            print(f"Found {prod_instances} main production instances, running {prod_instances} requests...")
+            
+            # Run steady test with same number of requests as instances
+            # Use high RPS to send requests quickly, let concurrency limit manage the flow  
+            rps = min(prod_instances * 2.0, 50.0)  # Up to 50 RPS max
+            duration = max(int(prod_instances / rps) + 2, 3)  # Ensure enough time + buffer
+            
+            final_test_name = test_name or f"instance_match_{prod_instances}_{scenario}"
+            
+            await tester.steady_load_test(rps, duration, final_test_name)
+        else:
+            raise RuntimeError("Client not initialized")
 
 
 if __name__ == "__main__":
