@@ -580,16 +580,12 @@ async def _run_instance_match_test(
                     not any(x in inst.environment_name for x in ["gpu", "aarch64", "win"])):
                     prod_instances += inst.healthy_targets
             
-            print(f"Found {prod_instances} main production instances, running {prod_instances} requests...")
-            
-            # Run steady test with same number of requests as instances
-            # Use high RPS to send requests quickly, let concurrency limit manage the flow  
-            rps = min(prod_instances * 2.0, 50.0)  # Up to 50 RPS max
-            duration = max(int(prod_instances / rps) + 2, 3)  # Ensure enough time + buffer
+            print(f"Found {prod_instances} main production instances, running exactly {prod_instances} requests...")
             
             final_test_name = test_name or f"instance_match_{prod_instances}_{scenario}"
             
-            await tester.steady_load_test(rps, duration, final_test_name)
+            # Send exactly N requests instead of using duration-based steady test
+            await tester.run_exact_request_count(prod_instances, final_test_name)
         else:
             raise RuntimeError("Client not initialized")
 

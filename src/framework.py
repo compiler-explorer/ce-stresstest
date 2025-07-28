@@ -26,6 +26,7 @@ from rich.table import Table
 from .api_client import CompilerExplorerClient, CompilationResult, InstanceStatus
 from .scenarios import WorkloadScenarios, ScenarioConfig
 from .load_patterns import LoadPattern, LoadPatternFactory, LoadEvent
+import random
 from .metrics import MetricsCollector, MetricsSummary, PerformanceAnalyzer
 
 
@@ -233,6 +234,140 @@ class CompilerStressTest:
         return await self._execute_load_test(
             pattern, test_name or f"sustained_{rps}rps_{duration_seconds}s"
         )
+
+    async def run_exact_request_count(
+        self, request_count: int, test_name: str
+    ) -> MetricsSummary:
+        """Run exactly N requests as fast as possible"""
+        scenarios = self._load_scenarios()
+        if not scenarios:
+            raise ValueError("No scenarios available for testing")
+
+        self.metrics_collector = MetricsCollector(scenarios)
+        self._current_test_name = test_name
+
+        self.console.print(f"\n[bold green]Starting test: {test_name}[/bold green]")
+        self.console.print(f"Requests: {request_count}")
+        self.console.print(f"Scenarios: {len(scenarios)}")
+        self.console.print(
+            f"Max concurrent requests: {self.config.max_concurrent_requests}"
+        )
+        
+        # Get and display instance status
+        try:
+            if self.client:
+                instance_status = await self.client.get_instance_status()
+                total_instances = sum(inst.healthy_targets for inst in instance_status if inst.status == "Online")
+                self.console.print(f"Active CE instances: {total_instances}")
+                
+                # Store instance status for results
+                self._instance_status_at_start = instance_status
+        except Exception as e:
+            self.console.print(f"[dim]Could not get instance status: {e}[/dim]")
+            self._instance_status_at_start = []
+
+        self.metrics_collector.start_collection()
+
+        # Create events for exactly N requests
+        load_events = []
+        for i in range(request_count):
+            # Distribute requests across scenarios by weight
+            scenario = self._select_scenario_by_weight(scenarios)
+            load_events.append(LoadEvent(
+                timestamp=time.time(),
+                scenario=scenario,
+                request_id=f"exact_{i+1}",
+                metadata={}
+            ))
+
+        # Create progress tracking
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeElapsedColumn(),
+            console=self.console,
+            transient=False,
+        ) as progress:
+            main_task = progress.add_task(
+                f"Running {test_name}", total=request_count
+            )
+
+            # Semaphore to limit concurrent requests
+            semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
+
+            # Task queue for managing concurrent requests
+            tasks = []
+            completed_requests = 0
+
+            try:
+                # Send all requests as fast as concurrency allows
+                for i, load_event in enumerate(load_events):
+                    # Check for shutdown request
+                    if self._shutdown_requested:
+                        self.console.print("\n[yellow]Stopping due to shutdown request...[/yellow]")
+                        break
+                    
+                    # Create compilation task
+                    task = asyncio.create_task(
+                        self._execute_compilation_request(semaphore, load_event)
+                    )
+                    tasks.append(task)
+
+                    # Update progress for requests sent
+                    progress.update(main_task, completed=i + 1)
+
+                    # Small delay to prevent overwhelming the event loop
+                    await asyncio.sleep(0.001)
+
+                # Wait for all requests to complete
+                if tasks:
+                    progress.update(
+                        main_task, description="Waiting for remaining requests..."
+                    )
+                    await asyncio.gather(*tasks, return_exceptions=True)
+
+                progress.update(main_task, completed=request_count)
+
+            except Exception as e:
+                self.console.print(f"[red]Error during test execution: {e}[/red]")
+
+        self.metrics_collector.stop_collection()
+        summary = self.metrics_collector.generate_summary()
+
+        # Adjust test name if interrupted
+        final_test_name = f"{test_name}_interrupted" if self._shutdown_requested else test_name
+
+        # Save results
+        await self._save_test_results(final_test_name, summary)
+
+        # Display summary with appropriate status
+        if self._shutdown_requested:
+            self.console.print(f"\n[bold yellow]Partial Results for {final_test_name}:[/bold yellow]")
+        else:
+            self.console.print(f"\n[bold green]Test Completed: {final_test_name}[/bold green]")
+        
+        self._display_test_summary(final_test_name, summary)
+
+        return summary
+
+    def _select_scenario_by_weight(self, scenarios: List[ScenarioConfig]) -> ScenarioConfig:
+        """Select a scenario based on weight distribution"""
+        total_weight = sum(s.weight for s in scenarios)
+        if total_weight == 0:
+            return random.choice(scenarios)
+        
+        rand_val = random.uniform(0, total_weight)
+        current_weight = 0
+        
+        for scenario in scenarios:
+            current_weight += scenario.weight
+            if rand_val <= current_weight:
+                return scenario
+        
+        # Fallback (shouldn't reach here)
+        return scenarios[-1]
 
     async def scaling_test(
         self,
