@@ -301,12 +301,22 @@ class MetricsCollector:
         median_latency = statistics.median(latencies)
         min_latency = min(latencies)
         max_latency = max(latencies)
-        
+
         # Separate latencies by success/failure
-        successful_latencies = [r.total_time_ms for r in self.results if r.status == CompilationStatus.SUCCESS]
-        failed_latencies = [r.total_time_ms for r in self.results if r.status != CompilationStatus.SUCCESS]
-        
-        min_successful_latency = min(successful_latencies) if successful_latencies else None
+        successful_latencies = [
+            r.total_time_ms
+            for r in self.results
+            if r.status == CompilationStatus.SUCCESS
+        ]
+        failed_latencies = [
+            r.total_time_ms
+            for r in self.results
+            if r.status != CompilationStatus.SUCCESS
+        ]
+
+        min_successful_latency = (
+            min(successful_latencies) if successful_latencies else None
+        )
         min_failed_latency = min(failed_latencies) if failed_latencies else None
 
         # Percentiles
@@ -338,10 +348,12 @@ class MetricsCollector:
             stats["baseline_violations"] for stats in self.scenario_stats.values()
         )
         baseline_violations_too_fast = sum(
-            stats["baseline_violations_too_fast"] for stats in self.scenario_stats.values()
+            stats["baseline_violations_too_fast"]
+            for stats in self.scenario_stats.values()
         )
         baseline_violations_too_slow = sum(
-            stats["baseline_violations_too_slow"] for stats in self.scenario_stats.values()
+            stats["baseline_violations_too_slow"]
+            for stats in self.scenario_stats.values()
         )
 
         # Scenario breakdown
@@ -356,8 +368,12 @@ class MetricsCollector:
                     "mean_latency_ms": statistics.mean(stats["latencies"]),
                     "median_latency_ms": statistics.median(stats["latencies"]),
                     "baseline_violations": stats["baseline_violations"],
-                    "baseline_violations_too_fast": stats["baseline_violations_too_fast"],
-                    "baseline_violations_too_slow": stats["baseline_violations_too_slow"],
+                    "baseline_violations_too_fast": stats[
+                        "baseline_violations_too_fast"
+                    ],
+                    "baseline_violations_too_slow": stats[
+                        "baseline_violations_too_slow"
+                    ],
                 }
 
         return MetricsSummary(

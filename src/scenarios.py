@@ -66,7 +66,9 @@ class WorkloadScenarios:
                     lib_spec = content[4:].strip()
                     if "/" in lib_spec:
                         lib_name, version = lib_spec.split("/", 1)
-                        libraries.append({"id": lib_name.strip(), "version": version.strip()})
+                        libraries.append(
+                            {"id": lib_name.strip(), "version": version.strip()}
+                        )
                     else:
                         # Just library name, use default version
                         libraries.append({"id": lib_spec.strip(), "version": "trunk"})
@@ -88,7 +90,14 @@ class WorkloadScenarios:
                 elif content.startswith("description:"):
                     description = content[12:].strip()
 
-        return compiler_options, baseline_min_ms, baseline_max_ms, weight, description, libraries
+        return (
+            compiler_options,
+            baseline_min_ms,
+            baseline_max_ms,
+            weight,
+            description,
+            libraries,
+        )
 
     def _determine_workload_type(self, filename: str) -> WorkloadType:
         """Determine workload type from filename"""

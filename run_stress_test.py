@@ -547,7 +547,7 @@ def instance_match(
     test_name,
 ):
     """Run requests matching the number of active production instances"""
-    
+
     config = TestConfiguration(
         endpoint=endpoint,
         compiler=compiler,
@@ -571,19 +571,25 @@ async def _run_instance_match_test(
         # Get current instance count - only main production instances
         if tester.client:
             instance_status = await tester.client.get_instance_status()
-            
+
             # Only count main production instances (exclude GPU, ARM64, Windows)
             prod_instances = 0
             for inst in instance_status:
-                if (inst.status == "Online" and 
-                    inst.environment_name in ["prod-blue", "prod-green"] and
-                    not any(x in inst.environment_name for x in ["gpu", "aarch64", "win"])):
+                if (
+                    inst.status == "Online"
+                    and inst.environment_name in ["prod-blue", "prod-green"]
+                    and not any(
+                        x in inst.environment_name for x in ["gpu", "aarch64", "win"]
+                    )
+                ):
                     prod_instances += inst.healthy_targets
-            
-            print(f"Found {prod_instances} main production instances, running exactly {prod_instances} requests...")
-            
+
+            print(
+                f"Found {prod_instances} main production instances, running exactly {prod_instances} requests..."
+            )
+
             final_test_name = test_name or f"instance_match_{prod_instances}_{scenario}"
-            
+
             # Send exactly N requests instead of using duration-based steady test
             await tester.run_exact_request_count(prod_instances, final_test_name)
         else:

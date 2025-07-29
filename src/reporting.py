@@ -13,7 +13,6 @@ import seaborn as sns
 import pandas as pd
 
 
-
 class ReportGenerator:
     """Generates comprehensive HTML reports with visualizations"""
 
@@ -219,8 +218,10 @@ class ReportGenerator:
             )  # Convert to percentage
 
         if success_rates:
-            cmap = plt.cm.get_cmap('RdYlGn')
-            colors = cmap([rate / 100 for rate in success_rates])  # Color based on success rate
+            cmap = plt.cm.get_cmap("RdYlGn")
+            colors = cmap(
+                [rate / 100 for rate in success_rates]
+            )  # Color based on success rate
             bars = ax.bar(range(len(test_names)), success_rates, color=colors)
 
             # Add value labels on bars

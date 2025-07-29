@@ -128,7 +128,7 @@ class CompilerExplorerClient:
             try:
                 if self.session is None:
                     raise RuntimeError("Client session not initialized")
-                
+
                 async with self.session.post(
                     url,
                     json=payload,
@@ -198,32 +198,34 @@ class CompilerExplorerClient:
     async def get_instance_status(self) -> List[InstanceStatus]:
         """Get current instance status from Compiler Explorer API"""
         url = f"{self.base_url}/api/status"
-        
+
         try:
             if self.session is None:
                 raise RuntimeError("Client session not initialized")
-            
+
             async with self.session.get(url) as response:
                 if response.status == 200:
                     status_data = await response.json()
                     instances = []
-                    
+
                     # Parse environments array
                     environments = status_data.get("environments", [])
                     for env in environments:
                         if isinstance(env, dict) and "health" in env:
                             health = env["health"]
-                            instances.append(InstanceStatus(
-                                environment_name=env.get("name", "unknown"),
-                                healthy_targets=health.get("healthy_targets", 0),
-                                total_targets=health.get("total_targets", 0),
-                                status=health.get("status", "unknown")
-                            ))
-                    
+                            instances.append(
+                                InstanceStatus(
+                                    environment_name=env.get("name", "unknown"),
+                                    healthy_targets=health.get("healthy_targets", 0),
+                                    total_targets=health.get("total_targets", 0),
+                                    status=health.get("status", "unknown"),
+                                )
+                            )
+
                     return instances
                 else:
                     raise RuntimeError(f"Status API returned {response.status}")
-                    
+
         except Exception as e:
             raise RuntimeError(f"Failed to get instance status: {str(e)}")
 
@@ -264,7 +266,9 @@ class CompilerExplorerClient:
                 program_stdout="",
                 program_stderr="",
                 exit_code=compilation_code,
-                error_message=f"Compilation failed: {compiler_stderr[:2000]}" if compiler_stderr else "Compilation failed",
+                error_message=f"Compilation failed: {compiler_stderr[:2000]}"
+                if compiler_stderr
+                else "Compilation failed",
                 timestamp=time.time(),
                 request_id=request_id,
             )
