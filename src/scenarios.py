@@ -28,6 +28,7 @@ class ScenarioConfig:
     weight: float = 1.0
     description: str = ""
     libraries: List[dict] = field(default_factory=list)
+    language: str = "c++"
 
 
 class WorkloadScenarios:
@@ -129,9 +130,14 @@ class WorkloadScenarios:
                 f"Workload directory not found: {self.workload_dir}"
             )
 
-        for cpp_file in self.workload_dir.glob("*.cpp"):
+        # Load both .cpp and .cu files
+        source_files = list(self.workload_dir.glob("*.cpp")) + list(
+            self.workload_dir.glob("*.cu")
+        )
+
+        for source_file in source_files:
             try:
-                with open(cpp_file, "r", encoding="utf-8") as f:
+                with open(source_file, "r", encoding="utf-8") as f:
                     source_code = f.read()
 
                 # Parse metadata from source
@@ -145,24 +151,28 @@ class WorkloadScenarios:
                 ) = self._parse_metadata_from_source(source_code)
 
                 # Determine workload type
-                workload_type = self._determine_workload_type(cpp_file.stem)
+                workload_type = self._determine_workload_type(source_file.stem)
+
+                # Determine language from file extension
+                language = "cuda" if source_file.suffix == ".cu" else "c++"
 
                 scenario = ScenarioConfig(
-                    name=cpp_file.stem,
+                    name=source_file.stem,
                     workload_type=workload_type,
                     source_code=source_code,
                     compiler_options=compiler_options,
                     baseline_min_ms=baseline_min_ms,
                     baseline_max_ms=baseline_max_ms,
                     weight=weight,
-                    description=description or f"Workload from {cpp_file.name}",
+                    description=description or f"Workload from {source_file.name}",
                     libraries=libraries,
+                    language=language,
                 )
 
                 scenarios.append(scenario)
 
             except Exception as e:
-                print(f"Warning: Failed to load scenario from {cpp_file}: {e}")
+                print(f"Warning: Failed to load scenario from {source_file}: {e}")
                 continue
 
         return sorted(scenarios, key=lambda x: x.name)

@@ -614,6 +614,7 @@ class CompilerStressTest:
                     compiler_id=self.config.compiler,
                     options=load_event.scenario.compiler_options,
                     libraries=load_event.scenario.libraries,
+                    language=load_event.scenario.language,
                     request_id=load_event.request_id,
                 )
 

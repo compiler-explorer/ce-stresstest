@@ -602,7 +602,9 @@ async def _run_instance_match_test(
     default="https://compiler-explorer.com",
     help="Compiler Explorer API endpoint",
 )
-@click.option("--compiler", default="vcpp_v19_43_VS17_13_x64", help="MSVC Compiler ID to use")
+@click.option(
+    "--compiler", default="vcpp_v19_43_VS17_13_x64", help="MSVC Compiler ID to use"
+)
 @click.option("--scenario", default="msvc_windows", help="Windows scenario to test")
 @click.option("--requests", type=int, default=20, help="Number of requests to send")
 @click.option("--concurrent", type=int, default=10, help="Max concurrent requests")
@@ -646,12 +648,71 @@ async def _run_msvc_test(
     """Run MSVC test"""
     async with CompilerStressTest(config) as tester:
         final_test_name = test_name or f"msvc_test_{requests}_requests"
-        
+
         print(f"Running MSVC test with compiler: {config.compiler}")
         print(f"Scenario: {config.scenarios[0] if config.scenarios else 'default'}")
         print(f"Requests: {requests}")
-        
+
         # Send exactly N requests for MSVC testing
+        await tester.run_exact_request_count(requests, final_test_name)
+
+
+@cli.command()
+@click.option(
+    "--endpoint",
+    default="https://compiler-explorer.com",
+    help="Compiler Explorer API endpoint",
+)
+@click.option("--compiler", default="nvcc129u1", help="CUDA Compiler ID to use")
+@click.option("--scenario", default="cuda_simple", help="CUDA scenario to test")
+@click.option("--requests", type=int, default=15, help="Number of requests to send")
+@click.option("--concurrent", type=int, default=5, help="Max concurrent requests")
+@click.option(
+    "--workload-dir", type=click.Path(exists=True), help="Custom workload directory"
+)
+@click.option("--results-dir", default="results", help="Results output directory")
+@click.option("--no-dashboard", is_flag=True, help="Disable live dashboard")
+@click.option("--test-name", help="Custom test name")
+def cuda_test(
+    endpoint,
+    compiler,
+    scenario,
+    requests,
+    concurrent,
+    workload_dir,
+    results_dir,
+    no_dashboard,
+    test_name,
+):
+    """Run a test specifically for CUDA compilers"""
+
+    config = TestConfiguration(
+        endpoint=endpoint,
+        compiler=compiler,
+        max_concurrent_requests=concurrent,
+        scenarios=[scenario],
+        workload_dir=workload_dir,
+        results_dir=results_dir,
+        enable_live_dashboard=not no_dashboard,
+    )
+
+    asyncio.run(_run_cuda_test(config, requests, test_name))
+
+
+async def _run_cuda_test(
+    config: TestConfiguration,
+    requests: int,
+    test_name: Optional[str] = None,
+):
+    """Run CUDA test"""
+    async with CompilerStressTest(config) as tester:
+        final_test_name = test_name or f"cuda_test_{requests}_requests"
+
+        print(f"Running CUDA test with compiler: {config.compiler}")
+        print(f"Scenario: {config.scenarios[0] if config.scenarios else 'default'}")
+        print(f"Requests: {requests}")
+
+        # Send exactly N requests for CUDA testing
         await tester.run_exact_request_count(requests, final_test_name)
 
 
