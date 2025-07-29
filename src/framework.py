@@ -375,7 +375,7 @@ class CompilerStressTest:
             return random.choice(scenarios)
 
         rand_val = random.uniform(0, total_weight)
-        current_weight = 0
+        current_weight = 0.0
 
         for scenario in scenarios:
             current_weight += scenario.weight

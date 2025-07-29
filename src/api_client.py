@@ -358,5 +358,5 @@ class CMakeClient:
         # Use regular compile endpoint with CMake content
         # This might need adjustment based on actual CMake API
         return await self.base_client.compile_and_execute(
-            main_cmake, compiler_id, cmake_args, request_id
+            main_cmake, compiler_id, cmake_args, None, request_id
         )
