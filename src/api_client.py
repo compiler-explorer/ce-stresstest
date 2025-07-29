@@ -45,17 +45,15 @@ class CompilationResult:
 
 
 class CompilerExplorerClient:
-    """Async client for Compiler Explorer API with rate limiting and retry logic"""
+    """Async client for Compiler Explorer API with rate limiting"""
 
     def __init__(
         self,
         base_url: str = "https://compiler-explorer.com",
         max_requests_per_second: float = 10.0,
-        max_retries: int = 3,
-        timeout_seconds: int = 30,
+        timeout_seconds: int = 60,
     ):
         self.base_url = base_url.rstrip("/")
-        self.max_retries = max_retries
         self.timeout_seconds = timeout_seconds
         self.throttler = Throttler(rate_limit=int(max_requests_per_second))
         self.session: Optional[aiohttp.ClientSession] = None
@@ -127,88 +125,27 @@ class CompilerExplorerClient:
 
         # Apply rate limiting
         async with self.throttler:
-            for attempt in range(self.max_retries + 1):
-                try:
-                    if self.session is None:
-                        raise RuntimeError("Client session not initialized")
-                    async with self.session.post(
-                        url,
-                        json=payload,
-                        headers={
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                        },
-                    ) as response:
-                        total_time_ms = (time.time() - start_time) * 1000
+            try:
+                if self.session is None:
+                    raise RuntimeError("Client session not initialized")
+                
+                async with self.session.post(
+                    url,
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                ) as response:
+                    total_time_ms = (time.time() - start_time) * 1000
 
-                        if response.status == 200:
-                            result_data = await response.json()
-                            return self._parse_compilation_result(
-                                result_data, total_time_ms, request_id
-                            )
-                        elif response.status == 429:  # Rate limited
-                            if attempt < self.max_retries:
-                                await asyncio.sleep(2**attempt)  # Exponential backoff
-                                continue
-                            else:
-                                return CompilationResult(
-                                    status=CompilationStatus.API_ERROR,
-                                    compile_time_ms=None,
-                                    execution_time_ms=None,
-                                    total_time_ms=total_time_ms,
-                                    compiler_stdout="",
-                                    compiler_stderr="",
-                                    program_stdout="",
-                                    program_stderr="",
-                                    exit_code=None,
-                                    error_message=f"Rate limited after {self.max_retries} retries",
-                                    timestamp=start_time,
-                                    request_id=request_id,
-                                )
-                        else:
-                            error_text = await response.text()
-                            return CompilationResult(
-                                status=CompilationStatus.API_ERROR,
-                                compile_time_ms=None,
-                                execution_time_ms=None,
-                                total_time_ms=total_time_ms,
-                                compiler_stdout="",
-                                compiler_stderr="",
-                                program_stdout="",
-                                program_stderr="",
-                                exit_code=None,
-                                error_message=f"HTTP {response.status}: {error_text}",
-                                timestamp=start_time,
-                                request_id=request_id,
-                            )
-
-                except asyncio.TimeoutError:
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(2**attempt)
-                        continue
-                    else:
-                        total_time_ms = (time.time() - start_time) * 1000
-                        return CompilationResult(
-                            status=CompilationStatus.TIMEOUT,
-                            compile_time_ms=None,
-                            execution_time_ms=None,
-                            total_time_ms=total_time_ms,
-                            compiler_stdout="",
-                            compiler_stderr="",
-                            program_stdout="",
-                            program_stderr="",
-                            exit_code=None,
-                            error_message=f"Request timeout after {self.timeout_seconds}s",
-                            timestamp=start_time,
-                            request_id=request_id,
+                    if response.status == 200:
+                        result_data = await response.json()
+                        return self._parse_compilation_result(
+                            result_data, total_time_ms, request_id
                         )
-
-                except Exception as e:
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(2**attempt)
-                        continue
                     else:
-                        total_time_ms = (time.time() - start_time) * 1000
+                        error_text = await response.text()
                         return CompilationResult(
                             status=CompilationStatus.API_ERROR,
                             compile_time_ms=None,
@@ -219,13 +156,44 @@ class CompilerExplorerClient:
                             program_stdout="",
                             program_stderr="",
                             exit_code=None,
-                            error_message=f"Unexpected error: {str(e)}",
+                            error_message=f"HTTP {response.status}: {error_text}",
                             timestamp=start_time,
                             request_id=request_id,
                         )
 
-        # This should never be reached due to the loop logic, but needed for type safety
-        raise RuntimeError("Exhausted all retry attempts without returning a result")
+            except asyncio.TimeoutError:
+                total_time_ms = (time.time() - start_time) * 1000
+                return CompilationResult(
+                    status=CompilationStatus.TIMEOUT,
+                    compile_time_ms=None,
+                    execution_time_ms=None,
+                    total_time_ms=total_time_ms,
+                    compiler_stdout="",
+                    compiler_stderr="",
+                    program_stdout="",
+                    program_stderr="",
+                    exit_code=None,
+                    error_message=f"Request timeout after {self.timeout_seconds}s",
+                    timestamp=start_time,
+                    request_id=request_id,
+                )
+
+            except Exception as e:
+                total_time_ms = (time.time() - start_time) * 1000
+                return CompilationResult(
+                    status=CompilationStatus.API_ERROR,
+                    compile_time_ms=None,
+                    execution_time_ms=None,
+                    total_time_ms=total_time_ms,
+                    compiler_stdout="",
+                    compiler_stderr="",
+                    program_stdout="",
+                    program_stderr="",
+                    exit_code=None,
+                    error_message=f"Unexpected error: {str(e)}",
+                    timestamp=start_time,
+                    request_id=request_id,
+                )
 
     async def get_instance_status(self) -> List[InstanceStatus]:
         """Get current instance status from Compiler Explorer API"""

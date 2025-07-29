@@ -37,7 +37,7 @@ class TestConfiguration:
     endpoint: str = "https://compiler-explorer.com"
     compiler: str = "g151"
     max_concurrent_requests: int = 50
-    request_timeout_seconds: int = 30
+    request_timeout_seconds: int = 60
     rate_limit_rps: float = 10.0
     scenarios: Optional[List[str]] = None  # Scenario names to use
     workload_dir: Optional[str] = None
@@ -693,6 +693,8 @@ class CompilerStressTest:
                 "requests_per_second": summary.requests_per_second,
                 "test_duration_seconds": summary.test_duration_seconds,
                 "baseline_violations": summary.baseline_violations,
+                "baseline_violations_too_fast": summary.baseline_violations_too_fast,
+                "baseline_violations_too_slow": summary.baseline_violations_too_slow,
                 "total_alerts": summary.total_alerts,
                 "error_breakdown": summary.error_breakdown,
                 "scenario_breakdown": summary.scenario_breakdown,
@@ -738,6 +740,9 @@ class CompilerStressTest:
         table.add_row("", "")  # Separator
         table.add_row("Test Duration", f"{summary.test_duration_seconds:.1f}s")
         table.add_row("Baseline Violations", f"{summary.baseline_violations}")
+        if summary.baseline_violations > 0:
+            table.add_row("  - Too Fast", f"{summary.baseline_violations_too_fast}")
+            table.add_row("  - Too Slow", f"{summary.baseline_violations_too_slow}")
         table.add_row("Total Alerts", f"{summary.total_alerts}")
 
         self.console.print(table)

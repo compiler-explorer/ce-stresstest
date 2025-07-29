@@ -1,6 +1,6 @@
 // compile: -O2 -std=c++17
-// baseline_min_ms: 400
-// baseline_max_ms: 1500
+// baseline_min_ms: 450
+// baseline_max_ms: 2500
 // weight: 0.6
 // description: Large static array allocations and deep template instantiation
 

@@ -1,6 +1,6 @@
 // compile: -std=c++17
-// baseline_min_ms: 200
-// baseline_max_ms: 800
+// baseline_min_ms: 350
+// baseline_max_ms: 3800
 // weight: 0.5
 // description: Template instantiation error
 

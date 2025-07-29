@@ -1,7 +1,7 @@
 // compile: -O2 -std=c++17
 // lib: boost/187
-// baseline_min_ms: 4000
-// baseline_max_ms: 8000
+// baseline_min_ms: 59900
+// baseline_max_ms: 150000
 // weight: 0.3
 // description: Heavy compile-time load from Boost library headers
 

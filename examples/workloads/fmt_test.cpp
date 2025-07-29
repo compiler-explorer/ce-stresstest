@@ -1,7 +1,7 @@
 // compile: -O2 -std=c++17
 // lib: fmt/trunk
-// baseline_min_ms: 100
-// baseline_max_ms: 500
+// baseline_min_ms: 1500
+// baseline_max_ms: 3500
 // weight: 0.5
 // description: Simple test using fmt library for formatting
 

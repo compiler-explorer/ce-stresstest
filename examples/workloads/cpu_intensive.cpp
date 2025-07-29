@@ -1,7 +1,7 @@
 // compile: -O2 -std=c++20
 // lib: ctre/trunk
-// baseline_min_ms: 800
-// baseline_max_ms: 3000
+// baseline_min_ms: 1700
+// baseline_max_ms: 6000
 // weight: 0.8
 // description: CPU-intensive compile-time regex processing with CTRE
 

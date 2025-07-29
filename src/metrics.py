@@ -62,6 +62,8 @@ class MetricsSummary:
 
     # Baseline violations
     baseline_violations: int
+    baseline_violations_too_fast: int
+    baseline_violations_too_slow: int
     total_alerts: int
 
     # Scenario breakdown
@@ -91,6 +93,8 @@ class MetricsCollector:
                 "failed": 0,
                 "latencies": [],
                 "baseline_violations": 0,
+                "baseline_violations_too_fast": 0,
+                "baseline_violations_too_slow": 0,
             }
         )
 
@@ -129,11 +133,13 @@ class MetricsCollector:
         # Check baseline violations
         scenario_config = self.scenarios.get(scenario_name)
         if scenario_config:
-            if (
-                result.total_time_ms < scenario_config.baseline_min_ms
-                or result.total_time_ms > scenario_config.baseline_max_ms
-            ):
+            if result.total_time_ms < scenario_config.baseline_min_ms:
                 stats["baseline_violations"] += 1
+                stats["baseline_violations_too_fast"] += 1
+                self._create_baseline_alert(result, scenario_config)
+            elif result.total_time_ms > scenario_config.baseline_max_ms:
+                stats["baseline_violations"] += 1
+                stats["baseline_violations_too_slow"] += 1
                 self._create_baseline_alert(result, scenario_config)
 
         # Update time series data periodically
@@ -275,6 +281,8 @@ class MetricsCollector:
                 error_breakdown={},
                 test_duration_seconds=0.0,
                 baseline_violations=0,
+                baseline_violations_too_fast=0,
+                baseline_violations_too_slow=0,
                 total_alerts=0,
                 scenario_breakdown={},
             )
@@ -329,6 +337,12 @@ class MetricsCollector:
         baseline_violations = sum(
             stats["baseline_violations"] for stats in self.scenario_stats.values()
         )
+        baseline_violations_too_fast = sum(
+            stats["baseline_violations_too_fast"] for stats in self.scenario_stats.values()
+        )
+        baseline_violations_too_slow = sum(
+            stats["baseline_violations_too_slow"] for stats in self.scenario_stats.values()
+        )
 
         # Scenario breakdown
         scenario_breakdown = {}
@@ -342,6 +356,8 @@ class MetricsCollector:
                     "mean_latency_ms": statistics.mean(stats["latencies"]),
                     "median_latency_ms": statistics.median(stats["latencies"]),
                     "baseline_violations": stats["baseline_violations"],
+                    "baseline_violations_too_fast": stats["baseline_violations_too_fast"],
+                    "baseline_violations_too_slow": stats["baseline_violations_too_slow"],
                 }
 
         return MetricsSummary(
@@ -362,6 +378,8 @@ class MetricsCollector:
             error_breakdown=dict(error_breakdown),
             test_duration_seconds=duration,
             baseline_violations=baseline_violations,
+            baseline_violations_too_fast=baseline_violations_too_fast,
+            baseline_violations_too_slow=baseline_violations_too_slow,
             total_alerts=len(self.alerts),
             scenario_breakdown=scenario_breakdown,
         )

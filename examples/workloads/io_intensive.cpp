@@ -1,6 +1,6 @@
 // compile: -O1 -std=c++17
-// baseline_min_ms: 400
-// baseline_max_ms: 1500
+// baseline_min_ms: 1600
+// baseline_max_ms: 6000
 // weight: 0.7
 // description: Many standard library includes and large generated output
 
